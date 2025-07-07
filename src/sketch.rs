@@ -1,12 +1,16 @@
-// src/sketch.rs
-
-// Corrected the 'use' statement: StrokeKind is no longer needed.
-use eframe::egui::{
-    self, Color32, FontId, Pos2, Rect, Shape, Slider, Stroke, output::OutputCommand,
-};
 use std::collections::HashMap;
+use std::time::{Duration, Instant};
+
+use eframe::egui;
+use eframe::egui::{Color32, FontId, Pos2, Rect, Shape, Slider, Stroke, output::OutputCommand};
+use egui_plot::{HLine, Line, LineStyle, MarkerShape, Plot, PlotPoint, Points, Text, VLine};
+use rand::Rng;
 
 pub const FRAMES_PER_SECOND: u32 = 60;
+const MAX_SAMPLES: usize = 400;
+const SAMPLE_DT: Duration = Duration::from_millis(100);
+const LO: f64 = 90.0;
+const HI: f64 = 110.0;
 
 /* ---------------- data types ---------------- */
 
@@ -50,6 +54,89 @@ enum EditorRequest {
     DeleteNode { node_id: u32 },
 }
 
+struct GraphDemo {
+    data: Vec<f64>,
+    last: f64,
+    t_prev: Instant,
+}
+
+impl GraphDemo {
+    fn new() -> Self {
+        Self {
+            data: Vec::with_capacity(MAX_SAMPLES),
+            last: 100.0,
+            t_prev: Instant::now(),
+        }
+    }
+
+    fn maybe_tick(&mut self) {
+        if self.t_prev.elapsed() < SAMPLE_DT {
+            return;
+        }
+        self.t_prev = Instant::now();
+
+        // random step ±0.5
+        let mut rng = rand::thread_rng();
+        let step: f64 = rng.gen_range(-0.5..=0.5);
+        self.last = (self.last + step).clamp(LO, HI);
+
+        if self.data.len() == MAX_SAMPLES {
+            self.data.remove(0);
+        }
+        self.data.push(self.last);
+    }
+
+    fn ui(&self, ui: &mut egui::Ui) {
+        Plot::new("price_plot")
+            .include_y(LO)
+            .include_y(HI)
+            .show(ui, |pui| {
+                /* line */
+                let pts: Vec<_> = self
+                    .data
+                    .iter()
+                    .enumerate()
+                    .map(|(i, &y)| [i as f64, y])
+                    .collect();
+                pui.line(
+                    Line::new(pts)
+                        .style(LineStyle::Solid)
+                        .stroke(Stroke::new(1.5, Color32::WHITE)),
+                );
+
+                /* latest marker + value */
+                if let Some((x, y)) = self
+                    .data
+                    .len()
+                    .checked_sub(1)
+                    .map(|i| (i as f64, self.data[i]))
+                {
+                    pui.points(
+                        Points::new(vec![[x, y]])
+                            .shape(MarkerShape::Circle)
+                            .radius(4.0)
+                            .color(Color32::LIGHT_GREEN),
+                    );
+                    pui.text(Text::new(PlotPoint::new(x, y), format!("{y:.2}")));
+                }
+
+                /* horizontal dashed guides every 5 */
+                for level in (95..=110).step_by(5) {
+                    // 95,100,105,110
+                    pui.hline(
+                        HLine::new(level as f64)
+                            .style(LineStyle::Dashed { length: 4.0 })
+                            .stroke(Stroke::new(1.0, Color32::GRAY)),
+                    );
+                    pui.text(Text::new(
+                        PlotPoint::new(0.0, level as f64),
+                        level.to_string(),
+                    ));
+                }
+            });
+    }
+}
+
 pub struct AppState {
     time_since_last_update: f32,
     scene_objects: Vec<SceneObject>,
@@ -60,6 +147,7 @@ pub struct AppState {
     next_id: u32,
     dragging: bool,
     last_pointer: Pos2,
+    graph: GraphDemo,
 }
 
 impl AppState {
@@ -74,6 +162,7 @@ impl AppState {
             next_id: 0,
             dragging: false,
             last_pointer: Pos2::ZERO,
+            graph: GraphDemo::new(),
         };
 
         /* sample tree */
@@ -117,6 +206,8 @@ impl eframe::App for AppState {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let dt = 1.0 / FRAMES_PER_SECOND as f32;
         self.time_since_last_update += dt;
+
+        self.graph.maybe_tick();
 
         /* ----- pan & zoom ----- */
         let input = ctx.input(|i| i.clone());
@@ -176,6 +267,10 @@ impl eframe::App for AppState {
                         .next();
                 }
             }
+        });
+
+        egui::Window::new("Price graph").show(ctx, |ui| {
+            self.graph.ui(ui);
         });
 
         /* ----- inspector ----- */

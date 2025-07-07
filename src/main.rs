@@ -1,4 +1,4 @@
-mod sketch;
+pub mod sketch;
 
 use eframe::{NativeOptions, Renderer, Result};
 
