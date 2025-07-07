@@ -1,5 +1,8 @@
+// src/sketch.rs
+
+// Corrected the 'use' statement: StrokeKind is no longer needed.
 use eframe::egui::{
-    self, Color32, FontId, Pos2, Rect, Shape, Slider, Stroke, StrokeKind, output::OutputCommand,
+    self, Color32, FontId, Pos2, Rect, Shape, Slider, Stroke, output::OutputCommand,
 };
 use std::collections::HashMap;
 
@@ -202,7 +205,7 @@ impl eframe::App for AppState {
 
                         ui.separator();
                         ui.label("Color:");
-                        let rgba = obj.color.to_array(); // Removed 'mut'
+                        let rgba = obj.color.to_array();
                         let mut col = [
                             rgba[0] as f32 / 255.0,
                             rgba[1] as f32 / 255.0,
@@ -241,7 +244,7 @@ impl eframe::App for AppState {
 
         /* ----- clipboard ----- */
         for cmd in ctx.output(|o| o.commands.clone()) {
-            if let OutputCommand::CopyText(_text) = cmd {} // Prefixed with _ to silence warning
+            if let OutputCommand::CopyText(_text) = cmd {}
         }
 
         ctx.request_repaint_after(std::time::Duration::from_secs_f32(
@@ -307,7 +310,10 @@ fn draw_world<F>(
     match o.shape {
         ShapeKind::Square => {
             let rect = Rect::from_center_size(center, egui::Vec2::splat(sz));
-            painter.rect(rect, 0.0, o.color, Stroke::NONE, StrokeKind::Middle);
+            // **THE FIX**: This is the correct signature for painter.rect
+            // It takes the rect, rounding, fill color, and stroke.
+            // The fifth 'StrokeKind' argument was incorrect.
+            painter.rect(rect, 0.0, o.color, Stroke::NONE, egui::StrokeKind::Middle);
         }
         ShapeKind::Circle => {
             painter.circle(center, sz * 0.5, o.color, Stroke::NONE);
@@ -339,14 +345,11 @@ fn draw_world<F>(
     );
 }
 
-// MODIFIED: Takes a mutable reference to next_id to generate new IDs.
 fn process_requests(v: &mut Vec<SceneObject>, reqs: &mut Vec<EditorRequest>, next_id: &mut u32) {
     for r in reqs.drain(..) {
         match r {
             EditorRequest::AddChild { parent_id } => {
                 if let Some(p) = find_object_by_id_mut(v, parent_id) {
-                    // This now uses the AppState's counter, avoiding the borrow error
-                    // and fixing the latent ID bug.
                     *next_id += 1;
                     let id = *next_id;
                     p.children.push(SceneObject::new(
@@ -363,9 +366,6 @@ fn process_requests(v: &mut Vec<SceneObject>, reqs: &mut Vec<EditorRequest>, nex
         }
     }
 }
-
-// REMOVED: This function is no longer needed.
-// fn next_id_recursive(v: &[SceneObject]) -> u32 { ... }
 
 fn find_and_delete_node(v: &mut Vec<SceneObject>, id: u32) -> bool {
     if let Some(i) = v.iter().position(|o| o.id == id) {

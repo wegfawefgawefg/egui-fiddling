@@ -4,10 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-eframe = { version = "0.31.1", default-features = false, features = [
-    "wgpu",
-    "x11",
-] }
+# default-features = false
+eframe = { version = "0.31.1", features = ["wgpu", "x11"] }
 glam = "0.30"
 rand = "0.9"
 # add other pure-Rust crates here as you need them
