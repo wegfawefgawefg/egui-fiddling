@@ -7,10 +7,12 @@
 # Each directory's contents are preceded by a banner with a fixed title and a tree view.
 # Supports whitelisting and blacklisting of file extensions.
 # Runs in recursive mode by default; use -n to disable recursion.
+# Appends cargo build output if the -b flag is specified.
 #
 # Usage:
-#   ./concat.sh [-n]
+#   ./concat.sh [-n] [-b]
 #     -n: Disable recursive processing of subdirectories.
+#     -b: Run 'cargo build' and append its output to the result.
 #
 # Configuration:
 #   - Define the directories and their associated titles in the CONFIGURATION SECTION below.
@@ -34,6 +36,7 @@ TITLES=(
 
 # Array of explicit source files to concatenate (if any)
 SRC_FILES=(
+    Cargo.toml
 )
 
 # Whitelist of file extensions (without the dot)
@@ -65,6 +68,7 @@ EXCLUDE_DIRS=(
     "__pycache__"
     "fetchers"
     "parsers"
+    "target"
 )
 
 # Hardcoded path to the output file where the concatenated content will be saved
@@ -75,8 +79,9 @@ OUTPUT_FILE="./concat.txt"
 # ==========================
 
 usage() {
-    echo "Usage: $0 [-n]"
+    echo "Usage: $0 [-n] [-b]"
     echo "  -n    Disable recursive processing of subdirectories."
+    echo "  -b    Run 'cargo build' and append the output."
     exit 1
 }
 
@@ -110,10 +115,14 @@ generate_exclude_pattern() {
 # ==========================
 
 RECURSIVE=true
-while getopts ":n" opt; do
+RUN_CARGO_BUILD=false
+while getopts ":nb" opt; do
     case ${opt} in
         n )
             RECURSIVE=false
+            ;;
+        b )
+            RUN_CARGO_BUILD=true
             ;;
         \? )
             echo "Invalid Option: -$OPTARG" 1>&2
@@ -246,6 +255,32 @@ if [ "${#SRC_FILES[@]}" -gt 0 ]; then
         echo -e "
 " >> "$OUTPUT_FILE"
     done
+fi
+
+# ==========================
+# Cargo Build Section
+# ==========================
+if [ "$RUN_CARGO_BUILD" = true ]; then
+    if ! command -v cargo &> /dev/null; then
+        echo "Error: 'cargo' command not found. Cannot run 'cargo build'."
+        echo -e "\nError: 'cargo' command not found." >> "$OUTPUT_FILE"
+    else
+        echo "Running 'cargo build' and appending output..."
+        echo "" >> "$OUTPUT_FILE"
+        echo "////// CARGO BUILD OUTPUT" >> "$OUTPUT_FILE"
+        echo "========================================" >> "$OUTPUT_FILE"
+        echo "" >> "$OUTPUT_FILE"
+        
+        # Execute cargo build, appending both standard output and standard error to the output file
+        cargo build >> "$OUTPUT_FILE" 2>&1
+        
+        if [ $? -eq 0 ]; then
+            echo "'cargo build' completed successfully. Output appended to '$OUTPUT_FILE'."
+        else
+            # This message goes to the console, the actual error from cargo is in the file
+            echo "Warning: 'cargo build' encountered errors. Check '$OUTPUT_FILE' for details."
+        fi
+    fi
 fi
 
 echo "All specified directories have been concatenated into '$OUTPUT_FILE'."
